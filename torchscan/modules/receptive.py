@@ -26,26 +26,29 @@ def module_rf(module, input, output):
         int: receptive field
         int: effective stride
         int: effective padding
+        int: dilation rate
     """
     if isinstance(module, (nn.Identity, nn.Flatten, nn.ReLU, nn.ELU, nn.LeakyReLU, nn.ReLU6, nn.Tanh, nn.Sigmoid,
                            _BatchNorm)):
-        return 1, 1, 0
+        return 1, 1, 0, 0
     elif isinstance(module, _ConvTransposeNd):
         k = module.kernel_size[0] if isinstance(module.kernel_size, tuple) else module.kernel_size
         s = module.stride[0] if isinstance(module.stride, tuple) else module.stride
-        return -k, 1 / s, 0
+        d = module.dilation[0] if isinstance(module.dilation, tuple) else module.dilation
+        return -k, 1 / s, 0, d
     elif isinstance(module, (_ConvNd, _MaxPoolNd, _AvgPoolNd)):
         k = module.kernel_size[0] if isinstance(module.kernel_size, tuple) else module.kernel_size
         s = module.stride[0] if isinstance(module.stride, tuple) else module.stride
         p = module.padding[0] if isinstance(module.padding, tuple) else module.padding
-        return k, s, p
+        d = module.dilation[0] if isinstance(module.dilation, tuple) else module.dilation
+        return k, s, p, d
     elif isinstance(module, (_AdaptiveMaxPoolNd, _AdaptiveAvgPoolNd)):
         return rf_adaptive_poolnd(module, input, output)
     elif isinstance(module, (nn.Dropout, nn.Linear)):
-        return 1, 1, 0
+        return 1, 1, 0, 0
     else:
         warnings.warn(f'Module type not supported: {module.__class__.__name__}')
-        return 1, 1, 0
+        return 1, 1, 0, 0
 
 
 def rf_adaptive_poolnd(module, input, output):
@@ -53,5 +56,6 @@ def rf_adaptive_poolnd(module, input, output):
     stride = math.ceil(input.shape[-1] / output.shape[-1])
     kernel_size = stride
     padding = (input.shape[-1] - kernel_size * stride) / 2
+    dilation = 0
 
-    return kernel_size, stride, padding
+    return kernel_size, stride, padding, dilation

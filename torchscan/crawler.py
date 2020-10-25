@@ -162,13 +162,13 @@ def crawl_module(module, input_shape, dtype=None, max_depth=None):
 
                 if any(module.children()):
                     tot_flops, tot_macs, tot_dmas = 0, 0, 0
-                    current_rf, current_stride, current_padding = 1, 1, 0
+                    current_rf, current_stride, current_padding, current_dilation = 1, 1, 0, 0
                 else:
                     # Compute stats for standalone layers
                     tot_flops = module_flops(module, input[0], output)
                     tot_macs = module_macs(module, input[0], output)
                     tot_dmas = module_dmas(module, input[0], output)
-                    current_rf, current_stride, current_padding = module_rf(module, input[0], output)
+                    current_rf, current_stride, current_padding, current_dilation = module_rf(module, input[0], output)
 
                 # Update layer information
                 info[fw_idx]['output_shape'] = (-1, *output.shape[1:])
@@ -180,6 +180,7 @@ def crawl_module(module, input_shape, dtype=None, max_depth=None):
                 info[fw_idx]['rf'] = current_rf
                 info[fw_idx]['s'] = current_stride
                 info[fw_idx]['p'] = current_padding
+                info[fw_idx]["d"] = current_dilation
 
                 # Mark the next hook for execution
                 post_hook_tracker[id(module)]['target'] += 1
@@ -234,14 +235,33 @@ def crawl_module(module, input_shape, dtype=None, max_depth=None):
 
     # Update cumulative receptive field
     _rf, _s, _p = 1, 1, 0
-    for fw_idx, _layer in enumerate(info[::-1]):
-        _rf = _layer['s'] * (_rf - 1) + _layer['rf']
+    a = []
+    b = []
+    current_depth = 0
+
+    for fw_idx, _layer in enumerate(info):
+        _rf = _s * ((_layer["rf"] - 1) * _layer["d"]) + _rf
         _s *= _layer['s']
         _p = _layer['s'] * _p + _layer['p']
 
-        info[len(info) - 1 - fw_idx]['rf'] = _rf
-        info[len(info) - 1 - fw_idx]['s'] = _s
-        info[len(info) - 1 - fw_idx]['p'] = _p
+        info[fw_idx]['rf'] = _rf
+        info[fw_idx]['s'] = _s
+        info[fw_idx]['p'] = _p
+
+        pre_depth = current_depth
+        current_depth = info[fw_idx]["depth"]
+
+        if info[fw_idx]["type"] == "Sequential":
+            a.append(fw_idx)
+
+        if current_depth < pre_depth:
+            b.append(fw_idx)
+
+    b.append(len(info) - 1)
+    for i, j in zip(a[1:], b):
+        info[i]["rf"] = info[j]["rf"]
+        if info[a[0]]["type"] == "Sequential":
+            info[a[0]]["rf"] = info[-1]["rf"]
 
     return dict(overheads=dict(cuda=dict(pre=cuda_overhead, fwd=get_process_gpu_ram(os.getpid()) - reserved_ram),
                                framework=dict(pre=framework_overhead, fwd=diff_ram)),

@@ -172,7 +172,6 @@ def aggregate_info(info, max_depth):
             info['layers'][fw_idx]['flops'] = flops
             info['layers'][fw_idx]['macs'] = macs
             info['layers'][fw_idx]['dmas'] = dmas
-            info['layers'][fw_idx]['rf'] = info['layers'][fw_idx + 1]['rf']
             info['layers'][fw_idx]['s'] = info['layers'][fw_idx + 1]['s']
             info['layers'][fw_idx]['p'] = info['layers'][fw_idx + 1]['p']
             info['layers'][fw_idx]['grad_params'] = grad_p
